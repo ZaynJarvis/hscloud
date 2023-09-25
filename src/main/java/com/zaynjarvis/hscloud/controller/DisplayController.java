@@ -11,10 +11,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -63,7 +60,10 @@ public class DisplayController {
     }
 
     @PostMapping("/display")
-    public ResponseEntity<?> createDisplay(@RequestBody List<Display.Item> display) {
+    public ResponseEntity<?> createDisplay(@RequestBody List<Display.Item> display, @RequestHeader("Authorization") String auth) throws IOException {
+        if (!PasswordUtil.ok(auth)) {
+            return new ResponseEntity<>("UNAUTH", HttpStatus.UNAUTHORIZED);
+        }
         // logic to handle creating a new user
         logger.info(display.toString());
         String err = Display.validate(display);
@@ -77,12 +77,49 @@ public class DisplayController {
         return new ResponseEntity<>(d, HttpStatus.OK);
     }
 
+
     @PostMapping("/raw_display")
     public String createDisplay(@RequestBody String raw) {
-        // logic to handle creating a new user
         logger.info(raw);
         pushToScreen(raw);
         return raw;
+    }
+
+    @PostMapping("/brightness")
+    public ResponseEntity<?> setBrightness(@RequestBody int b) {
+        if (b < 0 || b > 255) {
+            return new ResponseEntity<>("invalid brightness, need to be from 0 to 255", HttpStatus.BAD_REQUEST);
+        }
+        for (NovaDevice dv : serverChannel.getAllDevices()) {
+            if (dv == null || !dv.enable()) {
+                System.out.println(dv + " not enabled");
+                continue;
+            }
+
+            NovaTrafficServer ts = dv.obtainTrafficServer();
+
+            int i = ts.setBrightness(b);
+            if (i != 1) {
+                return new ResponseEntity<>(String.format("set brightness failed, %d", i), HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+        }
+        return new ResponseEntity<>(b, HttpStatus.OK);
+    }
+
+    @GetMapping("/brightness")
+    public String getBrightness() {
+        StringBuilder sb = new StringBuilder();
+        for (NovaDevice dv : serverChannel.getAllDevices()) {
+            if (dv == null || !dv.enable()) {
+                System.out.println(dv + " not enabled");
+                continue;
+            }
+
+            NovaTrafficServer ts = dv.obtainTrafficServer();
+
+            sb.append(String.format("%s:%d", dv.getDeviceName(), ts.getDeviceType().getScreenBrightness()));
+        }
+        return sb.toString();
     }
 
     @GetMapping("/ss")
@@ -102,6 +139,28 @@ public class DisplayController {
         }
 
         return new ResponseEntity<>(response, HttpStatus.OK);
+    }
+
+    @GetMapping("/auth")
+    public ResponseEntity<?> checkPW(@RequestHeader("Authorization") String auth) throws IOException {
+        if (!PasswordUtil.ok(auth)) {
+            return new ResponseEntity<>("UNAUTH", HttpStatus.UNAUTHORIZED);
+        }
+
+        return new ResponseEntity<>("OK", HttpStatus.OK);
+    }
+
+    @PostMapping("/password")
+    public ResponseEntity<?> setPassword(@RequestBody String pw, @RequestHeader("Authorization") String auth) throws IOException {
+        if (!PasswordUtil.ok(auth)) {
+            return new ResponseEntity<>("UNAUTH", HttpStatus.UNAUTHORIZED);
+        }
+
+        if (!PasswordUtil.setPassword(pw)) {
+            return new ResponseEntity<>("invalid password, only support alphabet and numbers", HttpStatus.BAD_REQUEST);
+        }
+
+        return new ResponseEntity<>("OK", HttpStatus.OK);
     }
 
     @GetMapping("/current")
