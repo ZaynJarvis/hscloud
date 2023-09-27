@@ -5,6 +5,7 @@ import nova.traffic.been.DeviceNowPlayList;
 import nova.traffic.been.PlayByTimeParam;
 import nova.traffic.server.NovaDevice;
 import nova.traffic.server.ServerChannel;
+import nova.traffic.utils.LogConfig;
 import nova.traffic.utils.NovaTrafficServer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
@@ -180,7 +181,6 @@ public class DisplayController {
 
     private String formatDisplay(List<Display.Item> display) {
         String head_template = """
-                                
                 [all]
                 items=%d
                 """;
@@ -230,8 +230,8 @@ public class DisplayController {
 
             NovaTrafficServer ts = dv.obtainTrafficServer();
 
-            int i = ts.sendLocalUpdate(1, raw);
-            logger.info("send status: " + i);
+            int i = ts.sendPlayList(1, raw);
+            logger.info("play status: " + i);
         }
     }
 
