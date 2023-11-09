@@ -2,14 +2,10 @@ package com.zaynjarvis.hscloud.controller;
 
 import jakarta.annotation.PostConstruct;
 import nova.traffic.been.DeviceNowPlayList;
-import nova.traffic.been.PlayByTimeParam;
 import nova.traffic.server.NovaDevice;
 import nova.traffic.server.ServerChannel;
-import nova.traffic.utils.LogConfig;
 import nova.traffic.utils.NovaTrafficServer;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,16 +13,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-import java.util.TimeZone;
 
 @RestController
 public class DisplayController {
@@ -49,7 +41,7 @@ public class DisplayController {
 
             @Override
             public void onConnected(NovaDevice dv, String ip) {
-                System.out.println(ip + " connected");
+                System.out.println(ip + " " + dv.getDeviceName() + " connected");
             }
         });
 
@@ -60,8 +52,8 @@ public class DisplayController {
         }
     }
 
-    @PostMapping("/display")
-    public ResponseEntity<?> createDisplay(@RequestBody List<Display.Item> display, @RequestHeader("Authorization") String auth) throws IOException {
+    @PostMapping("/display/{id}")
+    public ResponseEntity<?> createDisplay(@PathVariable String id, @RequestBody List<Display.Item> display, @RequestHeader("Authorization") String auth) throws IOException {
         if (!PasswordUtil.ok(auth)) {
             return new ResponseEntity<>("UNAUTH", HttpStatus.UNAUTHORIZED);
         }
@@ -73,16 +65,40 @@ public class DisplayController {
         }
 
         String d = formatDisplay(display);
-        pushToScreen(d);
+        String push_err = pushToScreen(d, id);
+        if (!push_err.isEmpty()) {
+            return new ResponseEntity<>(push_err, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+
+        return new ResponseEntity<>(d, HttpStatus.OK);
+    }
+
+    @PostMapping("/portrait/{id}")
+    public ResponseEntity<?> createPortrait(@PathVariable String id, @RequestBody List<Display.Portrait> display, @RequestHeader("Authorization") String auth) throws IOException {
+        if (!PasswordUtil.ok(auth)) {
+            return new ResponseEntity<>("UNAUTH", HttpStatus.UNAUTHORIZED);
+        }
+        String err = Display.validatePortrait(display);
+        if (!err.isEmpty()) {
+            return new ResponseEntity<>(err, HttpStatus.BAD_REQUEST);
+        }
+        // logic to handle creating a new user
+        logger.info(display.toString());
+
+        String d = formatPortrait(display);
+        String push_err = pushToScreen(d, id);
+        if (!push_err.isEmpty()) {
+            return new ResponseEntity<>(push_err, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
 
         return new ResponseEntity<>(d, HttpStatus.OK);
     }
 
 
-    @PostMapping("/raw_display")
-    public String createDisplay(@RequestBody String raw) {
+    @PostMapping("/raw_display/{id}")
+    public String createDisplay(@PathVariable String id, @RequestBody String raw) {
         logger.info(raw);
-        pushToScreen(raw);
+        pushToScreen(raw, id);
         return raw;
     }
 
@@ -123,21 +139,20 @@ public class DisplayController {
         return sb.toString();
     }
 
-    @GetMapping("/ss")
-    public ResponseEntity<?> getScreenShot() throws IOException {
+    @GetMapping("/ss/{id}")
+    public ResponseEntity<?> getScreenShot(@PathVariable String id) throws IOException {
         String response = "";
-        for (NovaDevice dv : serverChannel.getAllDevices()) {
-            if (dv == null || !dv.enable()) {
-                continue;
-            }
-            NovaTrafficServer ts = dv.obtainTrafficServer();
-            String fp = "/home/newuser/here.jpg";
-            int ret = ts.getDeviceScreenshot(fp);
-            if (ret != 1) {
-                return new ResponseEntity<>("get screenshot failed", HttpStatus.INTERNAL_SERVER_ERROR);
-            }
-            response = hash(Files.readAllBytes(Paths.get(fp)));
+        NovaDevice dv = serverChannel.getDeviceByName(id);
+        if (dv == null || !dv.enable()) {
+            return new ResponseEntity<>("device " + id + " not enabled", HttpStatus.BAD_REQUEST);
         }
+        NovaTrafficServer ts = dv.obtainTrafficServer();
+        String fp = "/home/newuser/here.jpg";
+        int ret = ts.getDeviceScreenshot(fp);
+        if (ret != 1) {
+            return new ResponseEntity<>("get screenshot failed", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        response = hash(Files.readAllBytes(Paths.get(fp)));
 
         return new ResponseEntity<>(response, HttpStatus.OK);
     }
@@ -150,15 +165,25 @@ public class DisplayController {
 
         return new ResponseEntity<>("OK", HttpStatus.OK);
     }
+    public static class PasswordRequest {
+        private String new_password;
 
+        // standard getters and setters
+
+        public String getNew_password() {
+            return new_password;
+        }
+    }
     @PostMapping("/password")
-    public ResponseEntity<?> setPassword(@RequestBody String pw, @RequestHeader("Authorization") String auth) throws IOException {
+    public ResponseEntity<?> setPassword(@RequestBody PasswordRequest passwordRequest, @RequestHeader("Authorization") String auth) throws IOException {
+        String pw = passwordRequest.getNew_password();
+
         if (!PasswordUtil.ok(auth)) {
             return new ResponseEntity<>("UNAUTH", HttpStatus.UNAUTHORIZED);
         }
 
         if (!PasswordUtil.setPassword(pw)) {
-            return new ResponseEntity<>("invalid password, only support alphabet and numbers", HttpStatus.BAD_REQUEST);
+            return new ResponseEntity<>("Invalid password, only support alphabet and numbers", HttpStatus.BAD_REQUEST);
         }
 
         return new ResponseEntity<>("OK", HttpStatus.OK);
@@ -189,7 +214,7 @@ public class DisplayController {
                 param=%d,1,1,1,0,0,1
                 """;
         String text_line_template = """
-                txtext%d=10,%d,0,0,1,1616,1,%d,2,0,0,%s,00000000,0,1,%d,1,%s,0,0,0,0,0,0
+                txtext%d=10,%d,292,20,1,1616,1,%d,2,0,0,%s,00000000,0,1,%d,1,%s,0,0,0,0,0,0
                 """;
 
         StringBuilder result = new StringBuilder();
@@ -206,13 +231,113 @@ public class DisplayController {
                     String txt = row.get(j);
                     result.append(String.format(text_line_template,
                             i + 1,// which line, actually unnecessary
-                            (i - 2) * 40, // position
+                            i * 20, // position
                             align[j], // horizontal alignment
                             color,
                             dur,
                             txt
                     ));
                 }
+            }
+        }
+
+        String res = result.toString();
+        logger.info(res);
+        return res;
+    }
+
+    private String formatPortrait(List<Display.Portrait> display) {
+        int header_pos = 0;
+        int footer_pos = 384;
+        String ex_template = """
+                txtext1=0,%d,0,64,arial,1414,1,2,2,3,0,%s,%s,0,1,100,1,%s,0,0,0,0,0,0
+                """;
+        String screen_prepare_ar = """
+                txtext1=75,64,53,64,arial,1414,1,1,2,3,0,000000,FCE09B,0,1,100,1,الوقت: \\\\n الوجهة: \\\\n المسار: ,0,0,0,0,0,0
+                txtext1=75,128,53,64,arial,1414,1,1,2,3,0,000000,B5CB99,0,1,100,1,الوقت: \\\\n الوجهة: \\\\n المسار: ,0,0,0,0,0,0
+                txtext1=75,192,53,64,arial,1414,1,1,2,3,0,000000,FCE09B,0,1,100,1,الوقت: \\\\n الوجهة: \\\\n المسار: ,0,0,0,0,0,0
+                txtext1=75,256,53,64,arial,1414,1,1,2,3,0,000000,B5CB99,0,1,100,1,الوقت: \\\\n الوجهة: \\\\n المسار: ,0,0,0,0,0,0
+                txtext1=75,320,53,64,arial,1414,1,1,2,3,0,000000,FCE09B,0,1,101,1,الوقت: \\\\n الوجهة: \\\\n المسار: ,0,0,0,0,0,0
+                """;
+        String screen_template_ar = """
+                txtext1=0,%d,75,64,arial,1414,1,2,2,3,0,%s,%s,0,1,%d,1,%s,0,0,0,0,0,0
+                """;
+        String screen_prepare_en = """
+                txtext1=0,64,53,64,arial,1414,1,1,2,3,0,000000,B5CB99,0,1,100,1,Time: \\\\nDest: \\\\nRoute: ,0,0,0,0,0,0
+                txtext1=0,128,53,64,arial,1414,1,1,2,3,0,000000,FCE09B,0,1,100,1,Time: \\\\nDest: \\\\nRoute: ,0,0,0,0,0,0
+                txtext1=0,192,53,64,arial,1414,1,1,2,3,0,000000,B5CB99,0,1,100,1,Time: \\\\nDest: \\\\nRoute: ,0,0,0,0,0,0
+                txtext1=0,256,53,64,arial,1414,1,1,2,3,0,000000,FCE09B,0,1,100,1,Time: \\\\nDest: \\\\nRoute: ,0,0,0,0,0,0
+                txtext1=0,320,53,64,arial,1414,1,1,2,3,0,000000,B5CB99,0,1,101,2,Time: \\\\nDest: \\\\nRoute: ,0,0,0,0,0,0
+                """;
+        String screen_template_en = """               
+                txtext1=53,%d,75,64,arial,1414,1,2,2,3,0,%s,%s,0,1,%d,1,%s,0,0,0,0,0,0
+                """;
+        String head_template = """
+                [all]
+                items=%d
+                """;
+        String item_param_template = """
+                [item%d]
+                param=%d,1,1,1,0,0,1
+                """;
+        String text_line_template = """
+                txtext%d=10,%d,0,0,1,1616,1,%d,2,0,0,%s,00000000,0,1,%d,1,%s,0,0,0,0,0,0
+                """;
+
+        StringBuilder result = new StringBuilder();
+        result.append(String.format(head_template, display.size()));
+        for (int idx = 0; idx < display.size(); idx++) {
+            Display.Portrait portrait = display.get(idx);
+            int dur = portrait.getDuration() * 10;
+            result.append(String.format(item_param_template, idx + 1, dur));
+
+            Display.EX header = portrait.getHeader();
+            if (null == header) {
+                header = new Display.EX();
+            }
+            result.append(String.format(ex_template, header_pos, header.getColor(), header.getBackground(), header.getText()));
+
+            Display.EX footer = portrait.getFooter();
+            if (null == footer) {
+                footer = new Display.EX();
+            }
+            result.append(String.format(ex_template, footer_pos, footer.getColor(), footer.getBackground(), footer.getText()));
+
+            String color = portrait.getColor(); // white
+            // primary and secondary color, can be configured.
+            // when support configure, color need to support dynamic
+            String[] bgColor = new String[]{"FCE09B", "B5CB99"};
+
+            String prepare = screen_prepare_ar;
+            String template = screen_template_ar;
+            int bgColorIdx = 0;
+            if (portrait.isIs_en()) {
+                prepare = screen_prepare_en;
+                template = screen_template_en;
+                bgColorIdx = 1;
+            }
+            result.append(prepare);
+
+            List<List<String>> content = portrait.getContent();
+            while (content.size() < 5) {
+                content.add(new ArrayList<>());
+            }
+            for (int i = 0; i < 5; i++) {
+                List<String> strings = content.get(i);
+                if (null == strings) {
+                    strings = new ArrayList<>();
+                }
+                while (strings.size() < 3) {
+                    strings.add("");
+                }
+                String txt = String.join("\\\\n", strings);
+                result.append(String.format(template,
+                        (i + 1) * 64, // y-axis position
+                        color, // position
+                        bgColor[(bgColorIdx + i) % 2], // horizontal alignment
+                        dur,
+                        txt
+                ));
             }
         }
 
@@ -233,6 +358,21 @@ public class DisplayController {
             int i = ts.sendPlayList(1, raw);
             logger.info("play status: " + i);
         }
+    }
+
+    private String pushToScreen(String raw, String device) {
+        NovaDevice dv = serverChannel.getDeviceByName(device);
+        if (dv == null || !dv.enable()) {
+            System.out.println(dv + " not enabled");
+            return String.format("device %s is not enabled", device);
+        }
+
+        NovaTrafficServer ts = dv.obtainTrafficServer();
+
+        int i = ts.sendPlayList(1, raw);
+        logger.info("play status: " + i);
+
+        return "";
     }
 
     public static String hash(byte[] data) {

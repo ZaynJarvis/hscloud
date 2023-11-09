@@ -8,7 +8,7 @@ public class PasswordUtil {
         File file = new File(PASSWORD_FILE);
         try {
             boolean ok = file.createNewFile();
-            System.out.println("create new file"+ok);
+            System.out.println("create new file "+ok);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
