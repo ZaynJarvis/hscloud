@@ -45,7 +45,7 @@ public class DisplayController {
             }
         });
 
-        if (serverChannel.open("209.97.173.140", 9000)) {
+        if (serverChannel.open("0.0.0.0", 9000)) {
             System.out.println("open channel success");
         } else {
             System.out.println("open channel failed");
@@ -94,12 +94,31 @@ public class DisplayController {
         return new ResponseEntity<>(d, HttpStatus.OK);
     }
 
-
     @PostMapping("/raw_display/{id}")
-    public String createDisplay(@PathVariable String id, @RequestBody String raw) {
+    public String createDisplay(@PathVariable String id, @RequestBody String raw) throws IOException {
         logger.info(raw);
         pushToScreen(raw, id);
         return raw;
+    }
+
+    @DeleteMapping("/cleanup/{id}")
+    public ResponseEntity<?> cleanUp(@PathVariable String id, @RequestHeader("Authorization") String auth) throws IOException {
+        if (!PasswordUtil.ok(auth)) {
+            return new ResponseEntity<>("UNAUTH", HttpStatus.UNAUTHORIZED);
+        }
+
+        NovaDevice dv = serverChannel.getDeviceByName(id);
+        if (dv == null || !dv.enable()) {
+            return new ResponseEntity<>("device " + id + " not enabled", HttpStatus.BAD_REQUEST);
+        }
+        NovaTrafficServer ts = dv.obtainTrafficServer();
+
+        ts.sendPlayList(1, "[all]\nitems=0");
+        for (int i = 1; i <= 10; i++) {
+            ts.removeLocalUpdate(i);
+        }
+
+        return new ResponseEntity<>("OK", HttpStatus.OK);
     }
 
     @PostMapping("/brightness")
@@ -344,20 +363,6 @@ public class DisplayController {
         String res = result.toString();
         logger.info(res);
         return res;
-    }
-
-    private void pushToScreen(String raw) {
-        for (NovaDevice dv : serverChannel.getAllDevices()) {
-            if (dv == null || !dv.enable()) {
-                System.out.println(dv + " not enabled");
-                continue;
-            }
-
-            NovaTrafficServer ts = dv.obtainTrafficServer();
-
-            int i = ts.sendPlayList(1, raw);
-            logger.info("play status: " + i);
-        }
     }
 
     private String pushToScreen(String raw, String device) {
