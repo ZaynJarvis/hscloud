@@ -2,6 +2,7 @@ package com.zaynjarvis.hscloud.controller;
 
 import jakarta.annotation.PostConstruct;
 import nova.traffic.been.DeviceNowPlayList;
+import nova.traffic.been.DeviceType;
 import nova.traffic.server.NovaDevice;
 import nova.traffic.server.ServerChannel;
 import nova.traffic.utils.NovaTrafficServer;
@@ -18,7 +19,9 @@ import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 public class DisplayController {
@@ -113,13 +116,70 @@ public class DisplayController {
         }
         NovaTrafficServer ts = dv.obtainTrafficServer();
 
-        ts.sendPlayList(1, "[all]\nitems=0");
+        String clean = """
+                [all]
+                items=1
+                [item1]
+                param=100,1,1,1,0,0,1
+                txtext1=0,0,0,64,0,1414,1,2,2,3,0,1,000000,0,1,100,1,,0,0,0,0,0,0
+                """;
+        int res = ts.sendPlayList(1, clean);
+        logger.info(String.format("update clean playlist %d", res));
         for (int i = 1; i <= 10; i++) {
-            ts.removeLocalUpdate(i);
+            int i1 = ts.removeLocalUpdate(i);
+            logger.info(String.format("remove %d: %d", i, i1));
         }
 
         return new ResponseEntity<>("OK", HttpStatus.OK);
     }
+
+    @GetMapping("/screens")
+    public ResponseEntity<?> screens(@PathVariable String id, @RequestHeader("Authorization") String auth) throws IOException {
+        String response = "";
+        ArrayList<Object> al = new ArrayList<>();
+        for (NovaDevice dv : serverChannel.getAllDevices()) {
+            if (dv == null || !dv.enable()) {
+                continue;
+            }
+            NovaTrafficServer ts = dv.obtainTrafficServer();
+            al.add(ts.getDeviceName());
+        }
+
+        return new ResponseEntity<>(al, HttpStatus.OK);
+    }
+
+    @GetMapping("/debug/{id}")
+    public ResponseEntity<?> debug(@PathVariable String id, @RequestHeader("Authorization") String auth) throws IOException {
+        if (!PasswordUtil.ok(auth)) return new ResponseEntity<>("UNAUTH", HttpStatus.UNAUTHORIZED);
+
+        Map<String, Object> result = new HashMap<>();
+        NovaDevice dv = serverChannel.getDeviceByName(id);
+        if (dv == null || !dv.enable())
+            return new ResponseEntity<>(result.put("error", "device " + id + " not enabled"), HttpStatus.BAD_REQUEST);
+
+        NovaTrafficServer ts = dv.obtainTrafficServer();
+        result.put("allPlaylist", ts.getAllPlaylistId());
+        result.put("nowPlayContent", ts.getNowPlayAllContent());
+//        int i = ts.deletePlaylistById(1);
+//        result.put("removePlaylist1", i);
+//        i = ts.deletePlaylistById(2);
+//        result.put("removePlaylist2", i);
+//        i = ts.deletePlaylistById(5);
+//        result.put("removePlaylist5", i);
+        result.put("deviceType", ts.getDeviceType());
+        result.put("allMediaFileName", ts.getAllMediaFileName());
+        result.put("clientDevice", ts.getClientDevice());
+        result.put("version", ts.getDeviceVersion());
+        result.put("screenStatus", ts.getScreenStatus());
+        result.put("getPlayByTimeList", ts.getPlayByTimeList());
+        result.put("getRDSRoad", ts.getRDSRoad());
+
+
+        ts.sendPlayList(1, "");
+
+        return new ResponseEntity<>(result, HttpStatus.OK);
+    }
+
 
     @PostMapping("/brightness")
     public ResponseEntity<?> setBrightness(@RequestBody int b) {
@@ -184,6 +244,7 @@ public class DisplayController {
 
         return new ResponseEntity<>("OK", HttpStatus.OK);
     }
+
     public static class PasswordRequest {
         private String new_password;
 
@@ -193,6 +254,7 @@ public class DisplayController {
             return new_password;
         }
     }
+
     @PostMapping("/password")
     public ResponseEntity<?> setPassword(@RequestBody PasswordRequest passwordRequest, @RequestHeader("Authorization") String auth) throws IOException {
         String pw = passwordRequest.getNew_password();
