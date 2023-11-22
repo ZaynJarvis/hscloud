@@ -5,6 +5,7 @@ import nova.traffic.been.DeviceNowPlayList;
 import nova.traffic.been.DeviceType;
 import nova.traffic.server.NovaDevice;
 import nova.traffic.server.ServerChannel;
+import nova.traffic.utils.LogConfig;
 import nova.traffic.utils.NovaTrafficServer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -36,6 +37,7 @@ public class DisplayController {
 
     @PostConstruct
     public void init() {
+//        LogConfig.debug = true;
         serverChannel.setClientConnectListener(new NovaDevice.ConnectListener() {
             @Override
             public void onDisconnect(NovaDevice novaDevice, String ip) {
@@ -100,7 +102,10 @@ public class DisplayController {
     @PostMapping("/raw_display/{id}")
     public String createDisplay(@PathVariable String id, @RequestBody String raw) throws IOException {
         logger.info(raw);
-        pushToScreen(raw, id);
+        String s = pushToScreen(raw, id);
+        if (!s.isEmpty()) {
+            return "failed with error code: "+ s + " please contact support";
+        }
         return raw;
     }
 
@@ -173,8 +178,8 @@ public class DisplayController {
         result.put("getPlayByTimeList", ts.getPlayByTimeList());
         result.put("getRDSRoad", ts.getRDSRoad());
 
-
-        ts.sendPlayList(1, "");
+        int i = ts.restartDevice();
+        result.put("restartDevice", i);
 
         return new ResponseEntity<>(result, HttpStatus.OK);
     }
@@ -434,10 +439,14 @@ public class DisplayController {
         }
 
         NovaTrafficServer ts = dv.obtainTrafficServer();
+        dv.setTimeOut(1000 * 1000);
 
-        int i = ts.sendPlayList(1, raw);
+        int i = ts.sendLocalUpdate(1, raw);
         logger.info("play status: " + i);
 
+        if (i != 1) {
+            return String.valueOf(i);
+        }
         return "";
     }
 
