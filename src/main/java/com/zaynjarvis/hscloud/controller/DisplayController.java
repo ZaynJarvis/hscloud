@@ -134,8 +134,7 @@ public class DisplayController {
     }
 
     @GetMapping("/screens")
-    public ResponseEntity<?> screens(@PathVariable String id, @RequestHeader("Authorization") String auth) throws IOException {
-        String response = "";
+    public ResponseEntity<?> screens() throws IOException {
         ArrayList<Object> al = new ArrayList<>();
         for (NovaDevice dv : serverChannel.getAllDevices()) {
             if (dv == null || !dv.enable()) {
