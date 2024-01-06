@@ -100,13 +100,16 @@ public class DisplayController {
     }
 
     @PostMapping("/raw_display/{id}")
-    public String createDisplay(@PathVariable String id, @RequestBody String raw) throws IOException {
+    public ResponseEntity<?> createDisplay(@PathVariable String id, @RequestBody String raw, @RequestHeader("Authorization") String auth) throws IOException {
+        if (!PasswordUtil.ok(auth)) {
+            return new ResponseEntity<>("UNAUTH", HttpStatus.UNAUTHORIZED);
+        }
         logger.info(raw);
         String s = pushToScreen(raw, id);
         if (!s.isEmpty()) {
-            return "failed with error code: "+ s + " please contact support";
+            return new ResponseEntity<>("failed with error code: "+ s + " please contact support", HttpStatus.OK);
         }
-        return raw;
+        return new ResponseEntity<>(raw, HttpStatus.OK);
     }
 
     @DeleteMapping("/cleanup/{id}")
@@ -441,6 +444,7 @@ public class DisplayController {
         NovaTrafficServer ts = dv.obtainTrafficServer();
         dv.setTimeOut(1000 * 1000);
 
+//        int i = ts.sendPlayList(1, raw);
         int i = ts.sendLocalUpdate(1, raw);
         logger.info("play status: " + i);
 
