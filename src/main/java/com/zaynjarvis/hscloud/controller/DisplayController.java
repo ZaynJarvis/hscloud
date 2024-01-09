@@ -444,8 +444,8 @@ public class DisplayController {
         NovaTrafficServer ts = dv.obtainTrafficServer();
         dv.setTimeOut(1000 * 1000);
 
-//        int i = ts.sendPlayList(1, raw);
-        int i = ts.sendLocalUpdate(1, raw);
+        int i = ts.sendPlayList(1, raw);
+//        int i = ts.sendLocalUpdate(1, raw);
         logger.info("play status: " + i);
 
         if (i != 1) {
