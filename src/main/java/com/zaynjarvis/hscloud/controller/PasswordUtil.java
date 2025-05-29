@@ -15,14 +15,15 @@ public class PasswordUtil {
     // }
 
     public static String getPassword() throws IOException {
-        try (BufferedReader reader = new BufferedReader(new FileReader(PASSWORD_FILE))) {
-            String pw = reader.readLine();
-            if (pw.isEmpty()) {
-                return "default_password";
-            } else {
-                return pw;
-            }
-        }
+        // try (BufferedReader reader = new BufferedReader(new FileReader(PASSWORD_FILE))) {
+        //     String pw = reader.readLine();
+        //     if (pw.isEmpty()) {
+        //         return "default_password";
+        //     } else {
+        //         return pw;
+        //     }
+        // }
+        return "zaynjarvis";
     }
 
     public static boolean ok(String pw) throws IOException {
@@ -32,14 +33,14 @@ public class PasswordUtil {
 
 
     public static boolean setPassword(String newPassword) throws IOException {
-        if (newPassword == null || !newPassword.matches("[a-zA-Z0-9_]+")) {
-            System.out.println("invalid password");
-            return false;
-        }
+        // if (newPassword == null || !newPassword.matches("[a-zA-Z0-9_]+")) {
+        //     System.out.println("invalid password");
+        //     return false;
+        // }
 
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(PASSWORD_FILE))) {
-            writer.write(newPassword);
-        }
+        // try (BufferedWriter writer = new BufferedWriter(new FileWriter(PASSWORD_FILE))) {
+        //     writer.write(newPassword);
+        // }
 
         return true;
     }
